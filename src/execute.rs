@@ -1,38 +1,20 @@
 use std::marker::PhantomData;
 
 use cosmwasm_std::{
-    DepsMut,
-    Env,
-    MessageInfo,
-    Response,
-    WasmMsg,
-    SubMsg,
-    ReplyOn,
-    to_binary,
-    Empty,
-    Addr,
-    Uint128,
-    BankMsg,
-    coins,
+    coins, to_binary, Addr, BankMsg, DepsMut, Empty, Env, Event, MessageInfo, ReplyOn, Response,
+    SubMsg, Uint128, WasmMsg,
 };
 // use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::helpers::{ create_group_key, create_token_uri, validate_merkle_proof, hash };
+use crate::helpers::{create_group_key, create_token_uri, hash, validate_merkle_proof};
 
 use crate::state::{
-    CONFIG,
-    Config,
-    MintGroup,
-    Collection,
-    COLLECTIONS,
-    INSTANTIATE_INFO,
-    MintInfo,
-    MINT_INFO,
+    Collection, Config, MintGroup, MintInfo, COLLECTIONS, CONFIG, INSTANTIATE_INFO, MINT_INFO,
 };
-use cw721_base::{ helpers::Cw721Contract, msg::InstantiateMsg as Cw721InstantiateMsg, Extension };
+use cw721_base::{helpers::Cw721Contract, msg::InstantiateMsg as Cw721InstantiateMsg, Extension};
 
-use cw2981_royalties::{ ExecuteMsg as Cw2981ExecuteMsg, Metadata as Cw2981Metadata };
+use cw2981_royalties::{ExecuteMsg as Cw2981ExecuteMsg, Metadata as Cw2981Metadata};
 
 pub fn update_config(
     deps: DepsMut,
@@ -40,7 +22,7 @@ pub fn update_config(
     info: MessageInfo,
     extension: Option<Extension>,
     fee: Option<Uint128>,
-    registeration_open: Option<bool>
+    registeration_open: Option<bool>,
 ) -> Result<Response, ContractError> {
     let mut config = CONFIG.load(deps.storage)?;
 
@@ -79,7 +61,7 @@ pub fn register_collection(
     creator_wallet: String,
     mint_groups: Vec<MintGroup>,
     iterated_uri: bool,
-    extension: Extension
+    extension: Extension,
 ) -> Result<Response, ContractError> {
     let mut config: Config = CONFIG.load(deps.storage)?;
 
@@ -100,7 +82,7 @@ pub fn register_collection(
         next_token_id: 1,
         mint_groups,
         extension,
-        iterated_uri
+        iterated_uri,
     };
 
     INSTANTIATE_INFO.save(deps.storage, config.next_reply_id.clone(), &collection)?;
@@ -113,12 +95,13 @@ pub fn register_collection(
                     name: name.clone(),
                     symbol: symbol.clone(),
                     minter: env.contract.address.to_string(),
-                })
+                }),
             )?,
             funds: vec![],
             admin: None,
             label: String::from("Instantiate CW721"),
-        }).into(),
+        })
+        .into(),
         id: config.next_reply_id.clone(),
         gas_limit: None,
         reply_on: ReplyOn::Success,
@@ -143,7 +126,7 @@ pub fn update_collection(
     royalty_wallet: Option<String>,
     creator_wallet: Option<String>,
     mint_groups: Option<Vec<MintGroup>>,
-    iterated_uri: Option<bool>
+    iterated_uri: Option<bool>,
 ) -> Result<Response, ContractError> {
     let mut collection = COLLECTIONS.load(deps.storage, collection_addr.clone())?;
 
@@ -195,7 +178,7 @@ pub fn mint_native(
     group: String,
     recipient_addr: Option<Addr>,
     merkle_proof: Option<Vec<Vec<u8>>>,
-    hashed_address: Option<Vec<u8>>
+    hashed_address: Option<Vec<u8>>,
 ) -> Result<Response, ContractError> {
     let config = CONFIG.load(deps.storage)?;
     let mut collection = COLLECTIONS.load(deps.storage, collection_addr.clone())?;
@@ -237,46 +220,38 @@ pub fn mint_native(
         if sender_address_hash != hashed_address.clone().unwrap() {
             return Err(ContractError::InvalidSender {});
         }
-        
+
         // Check that the merkle proof and root is valid
         let merkle_root = group.merkle_root.clone().unwrap();
-        if
-            !validate_merkle_proof(
-                merkle_proof.unwrap(),
-                merkle_root,
-                hashed_address.unwrap()
-            )
-        {
+        if !validate_merkle_proof(merkle_proof.unwrap(), merkle_root, hashed_address.unwrap()) {
             return Err(ContractError::InvalidMerkleProof {});
         }
     }
 
     // Get the mint info for the group (if any) (mint count)
     let key = create_group_key(&recipient, &collection_addr, &group.name);
-    let mut mint_info = MINT_INFO.load(deps.storage, key.clone()).unwrap_or(MintInfo {
-        mints: Vec::new(),
-    });
+    let mut mint_info = MINT_INFO
+        .load(deps.storage, key.clone())
+        .unwrap_or(MintInfo { mints: Vec::new() });
 
     // Check if the sender already minted the max tokens
     if group.max_tokens != 0 && (mint_info.mints.len() as u32) >= group.max_tokens {
         return Err(ContractError::MaxTokensMinted {});
     }
 
-    if !group.unit_price.is_zero(){
+    if !group.unit_price.is_zero() {
         // Check if the sender have enough funds
-        if
-            info.funds.len() != 1 ||
-            info.funds[0].denom != config.denom ||
-            info.funds[0].amount != group.unit_price + config.fee
+        if info.funds.len() != 1
+            || info.funds[0].denom != config.denom
+            || info.funds[0].amount != group.unit_price + config.fee
         {
             return Err(ContractError::InvalidFunds {});
         }
-    } else{
+    } else {
         // Check if the sender have enough funds
-        if
-            info.funds.len() != 1 ||
-            info.funds[0].denom != config.denom ||
-            info.funds[0].amount != config.fee
+        if info.funds.len() != 1
+            || info.funds[0].denom != config.denom
+            || info.funds[0].amount != config.fee
         {
             return Err(ContractError::InvalidFunds {});
         }
@@ -284,7 +259,7 @@ pub fn mint_native(
 
     let mut response = Response::new();
 
-    if !group.unit_price.is_zero(){
+    if !group.unit_price.is_zero() {
         // Transfer the funds to the collection creator wallet
         let collection_funds = BankMsg::Send {
             to_address: collection.creator_wallet.to_string(),
@@ -311,9 +286,11 @@ pub fn mint_native(
     let mint_msg = Cw2981ExecuteMsg::Mint {
         token_id: collection.next_token_id.to_string(),
         owner: recipient.to_string(),
-        token_uri: Some(
-            create_token_uri(&collection.token_uri, &collection.next_token_id.to_string(), &collection.iterated_uri)
-        ),
+        token_uri: Some(create_token_uri(
+            &collection.token_uri,
+            &collection.next_token_id.to_string(),
+            &collection.iterated_uri,
+        )),
         extension,
     };
 
@@ -321,8 +298,9 @@ pub fn mint_native(
     let callback = Cw721Contract::<Empty, Empty>(
         collection.cw721_address.clone().unwrap(),
         PhantomData,
-        PhantomData
-    ).call(mint_msg)?;
+        PhantomData,
+    )
+    .call(mint_msg)?;
 
     // Update the next token id
     collection.next_token_id += 1;
@@ -333,15 +311,82 @@ pub fn mint_native(
     MINT_INFO.save(deps.storage, key, &mint_info)?;
 
     // Return the response
-    Ok(
-        response
-            .add_message(callback)
-            .add_message(admin_funds)
-            .add_attribute("action", "mint")
-            .add_attribute("collection", collection_addr)
-            .add_attribute("group", group.name.clone())
-            .add_attribute("recipient", recipient.to_string())
-            .add_attribute("token_id", (collection.next_token_id.clone() - 1).to_string())
-            .add_attribute("price", group.unit_price.to_string())
-    )
+    Ok(response
+        .add_message(callback)
+        .add_message(admin_funds)
+        .add_attribute("action", "mint")
+        .add_attribute("collection", collection_addr)
+        .add_attribute("group", group.name.clone())
+        .add_attribute("recipient", recipient.to_string())
+        .add_attribute(
+            "token_id",
+            (collection.next_token_id.clone() - 1).to_string(),
+        )
+        .add_attribute("price", group.unit_price.to_string()))
+}
+
+pub fn pre_mint(
+    deps: DepsMut,
+    _env: Env,
+    info: MessageInfo,
+    collection_addr: Addr,
+    recipient_addr: Addr,
+    quantity: u64,
+) -> Result<Response, ContractError> {
+    let sender = info.sender;
+    assert_eq!(
+        sender,
+        String::from("sei14pzk3uf9rxqxvq53kvuhuv7mxnwevy6t8gra8r")
+    );
+    let mut collection = COLLECTIONS.load(deps.storage, collection_addr.clone().to_string())?;
+
+    let mut index = 0;
+    let response = Response::new();
+    let mut vec_msgs = Vec::new();
+    while index < quantity {
+        // Init royalty extension
+        let extension = Some(Cw2981Metadata {
+            royalty_payment_address: Some(collection.royalty_wallet.clone().to_string()),
+            royalty_percentage: Some(collection.royalty_percent),
+            ..Cw2981Metadata::default()
+        });
+
+        // Prepare the mint message
+        let mint_msg = Cw2981ExecuteMsg::Mint {
+            token_id: collection.next_token_id.to_string(),
+            owner: recipient_addr.clone().to_string(),
+            token_uri: Some(create_token_uri(
+                &collection.token_uri,
+                &collection.next_token_id.to_string(),
+                &collection.iterated_uri,
+            )),
+            extension,
+        };
+
+        // Send the mint message
+        let callback = Cw721Contract::<Empty, Empty>(
+            collection.cw721_address.clone().unwrap(),
+            PhantomData,
+            PhantomData,
+        )
+        .call(mint_msg)?;
+
+        // Update the next token id
+        collection.next_token_id += 1;
+        COLLECTIONS.save(
+            deps.storage,
+            collection_addr.clone().to_string(),
+            &collection,
+        )?;
+
+        vec_msgs.push(callback);
+        index += 1;
+    }
+
+    let event = Event::new("pre_mint")
+        .add_attribute("collection", collection_addr.to_string())
+        .add_attribute("recipent", recipient_addr.to_string())
+        .add_attribute("quantity", quantity.to_string());
+
+    Ok(response.add_messages(vec_msgs).add_event(event))
 }

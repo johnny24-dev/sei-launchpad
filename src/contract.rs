@@ -10,11 +10,14 @@ use cw_utils::{maybe_addr, parse_reply_instantiate_data};
 // use cw2::set_contract_version;
 
 use crate::error::ContractError;
-use crate::execute::{mint_native, register_collection, update_collection, update_config};
+use crate::execute::{
+    mint_native, pre_mint, register_collection, update_collection, update_config,
+};
 use crate::helpers::create_group_key;
 use crate::msg::{ExecuteMsg, InstantiateMsg, QueryMsg};
 use crate::state::{
-    Collection, Config, MintInfo, COLLECTIONS, CONFIG, INSTANTIATE_INFO, MINT_INFO, MintInfoDetail, MintInfoDetailResponse,
+    Collection, Config, MintInfo, MintInfoDetail, MintInfoDetailResponse, COLLECTIONS, CONFIG,
+    INSTANTIATE_INFO, MINT_INFO,
 };
 use crate::structs::{CollectionResponseMinimal, CollectionsResponse};
 
@@ -80,7 +83,6 @@ pub fn execute(
             mint_groups,
             iterated_uri,
             extension,
-            
         ),
         ExecuteMsg::MintNative {
             collection,
@@ -108,7 +110,7 @@ pub fn execute(
             royalty_wallet,
             creator_wallet,
             mint_groups,
-            iterated_uri
+            iterated_uri,
         } => update_collection(
             deps,
             env,
@@ -122,13 +124,19 @@ pub fn execute(
             royalty_wallet,
             creator_wallet,
             mint_groups,
-            iterated_uri
+            iterated_uri,
         ),
         ExecuteMsg::UpdateConfig {
             extension,
             fee,
             registeration_open,
         } => update_config(deps, env, info, extension, fee, registeration_open),
+
+        ExecuteMsg::PreMint {
+            collection,
+            recipient,
+            quantity
+        } => pre_mint(deps, env, info, collection, recipient, quantity),
     }
 }
 
@@ -181,7 +189,10 @@ pub fn query(deps: Deps, _env: Env, msg: QueryMsg) -> StdResult<Binary> {
                     .load(deps.storage, key.clone())
                     .unwrap_or(MintInfo { mints: Vec::new() });
                 // mints.extend(info.mints);
-                mints.push(MintInfoDetail{ group_name: group.name, mints: info.mints })
+                mints.push(MintInfoDetail {
+                    group_name: group.name,
+                    mints: info.mints,
+                })
             }
             to_binary(&(MintInfoDetailResponse { mints }))
         }
